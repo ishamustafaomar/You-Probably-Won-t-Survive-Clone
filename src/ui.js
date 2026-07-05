@@ -140,7 +140,7 @@ export class UI {
     for (let i = 0; i < n; i++) {
       const x = x0 + i * (size + pad);
       const sel = i === g.hotbarIndex;
-      ctx.fillStyle = sel ? 'rgba(244,241,222,0.35)' : 'rgba(20,22,40,0.55)';
+      ctx.fillStyle = sel ? 'rgba(60,64,90,0.8)' : 'rgba(20,22,40,0.55)';
       ctx.fillRect(x, y, size, size);
       ctx.strokeStyle = sel ? PALETTE.ui : 'rgba(244,241,222,0.4)';
       ctx.lineWidth = sel ? 3 : 1;
