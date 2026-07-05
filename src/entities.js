@@ -131,6 +131,7 @@ export class Projectile {
     } else {
       for (const e of game.enemies) {
         if (e.dead || this.hit.has(e)) continue;
+        if (e.invulnerable) continue;   // shots pass through phased ghosts
         const rad = e.radius + (this.kind === 'flame' ? 6 : 3);
         if (dist2(this.x, this.y, e.x, e.y) < rad * rad) {
           if (this.kind === 'rocket') { this.explode(game); return; }
@@ -288,18 +289,21 @@ export class Enemy {
   }
   get invulnerable() { return this.type === 'ghost' && this.phase === 'phased'; }
 
+  // burn DoT, ticked by the game for every enemy (bosses included)
+  tickBurn(dt, game) {
+    if (this.burnT <= 0 || this.dead) return;
+    this.burnT -= dt;
+    if (!this.invulnerable) {
+      this.hp -= dt * 1.2;
+      if (Math.random() < dt * 8) game.fx.spark(this.x, this.y - 8, '#e67e22', 1, 30);
+      if (this.hp <= 0) game.killEnemy(this, true);
+    }
+  }
+
   update(dt, game) {
     const { player, world } = game;
     this.attackCd = Math.max(0, this.attackCd - dt);
     this.flash = Math.max(0, this.flash - dt);
-    if (this.burnT > 0) {
-      this.burnT -= dt;
-      if (!this.invulnerable) {
-        this.hp -= dt * 1.2;
-        if (Math.random() < dt * 8) game.fx.spark(this.x, this.y - 8, '#e67e22', 1, 30);
-        if (this.hp <= 0) { game.killEnemy(this, true); return; }
-      }
-    }
 
     if (this.type === 'ghost') {
       this.phaseT -= dt;
@@ -314,6 +318,7 @@ export class Enemy {
 
     // ranged enemies stop at range and shoot
     const rng = this.cfg.range;
+    let holdPosition = false;
     if (rng && d < rng && !player.dead) {
       this.shotCd -= dt;
       if (this.shotCd <= 0) {
@@ -331,11 +336,11 @@ export class Enemy {
           }));
         }
       }
-      if (this.type === 'lava') return;   // lava monster stands still while in range
+      holdPosition = this.type === 'lava';   // lava monster stands still while in range
     }
 
     // movement
-    const sp = this.speed * (this.phase === 'phased' ? 1.2 : 1);
+    const sp = holdPosition ? 0 : this.speed * (this.phase === 'phased' ? 1.2 : 1);
     const nx = this.x + (dx / d) * sp * dt;
     const ny = this.y + (dy / d) * sp * dt;
     if (this.phase === 'phased') {
@@ -419,6 +424,7 @@ export class BigZombieBoss extends Enemy {
       this.x += (dx / d) * cfg.speed * dt;
       this.y += (dy / d) * cfg.speed * dt;
       this.crush(game);
+      [this.x, this.y] = world.collide(this.x, this.y, this.radius * 0.7);   // stay off the water
       if (this.stateT <= 0) {
         this.state = 'telegraph'; this.stateT = cfg.telegraph;
         // spawns regular zombies before it dashes
@@ -437,6 +443,7 @@ export class BigZombieBoss extends Enemy {
       this.x += Math.cos(this.dashA) * cfg.dashSpeed * dt;
       this.y += Math.sin(this.dashA) * cfg.dashSpeed * dt;
       this.crush(game);
+      [this.x, this.y] = world.collide(this.x, this.y, this.radius * 0.7);
       if (this.stateT <= 0) { this.state = 'roam'; this.stateT = cfg.roamTime; }
     }
 
@@ -498,7 +505,9 @@ export class HybridZombieBoss extends Enemy {
       const a = Math.atan2(game.player.y - this.y, game.player.x - this.x);
       const c = Math.floor((this.x + Math.cos(a) * TILE * 1.2) / TILE);
       const r = Math.floor((this.y + Math.sin(a) * TILE * 1.2) / TILE);
-      if (game.world.canPlaceObstacle(c, r)) {
+      const p = game.player;
+      const onPlayer = c === Math.floor(p.x / TILE) && r === Math.floor(p.y / TILE);
+      if (!onPlayer && game.world.canPlaceObstacle(c, r)) {
         game.world.addWall(c, r, 'wood');
         game.fx.puff(c * TILE + 16, r * TILE + 16, '#8d6e4a', 4);
       }

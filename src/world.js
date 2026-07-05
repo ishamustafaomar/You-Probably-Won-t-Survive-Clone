@@ -41,8 +41,24 @@ export class World {
         this.grid[this.idx(c, r)] = d + wobble < 1 ? CELL.GROUND : CELL.WATER;
       }
     }
+    // remove wobble-generated offshore specks: keep only ground connected to the centre
+    const keep = new Uint8Array(this.cols * this.rows);
+    const stack = [[this.cols >> 1, this.rows >> 1]];
+    keep[this.idx(this.cols >> 1, this.rows >> 1)] = 1;
+    while (stack.length) {
+      const [c, r] = stack.pop();
+      for (const [nc, nr] of [[c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]]) {
+        if (this.inBounds(nc, nr) && !keep[this.idx(nc, nr)] && this.grid[this.idx(nc, nr)] === CELL.GROUND) {
+          keep[this.idx(nc, nr)] = 1;
+          stack.push([nc, nr]);
+        }
+      }
+    }
+    for (let i = 0; i < this.grid.length; i++) {
+      if (this.grid[i] === CELL.GROUND && !keep[i]) this.grid[i] = CELL.WATER;
+    }
     // ground decals
-    for (let i = 0; i < 380; i++) {
+    for (let i = 0; i < 640; i++) {
       const c = (this.rng() * this.cols) | 0, r = (this.rng() * this.rows) | 0;
       if (this.cell(c, r) === CELL.GROUND) {
         this.deco.push({
@@ -54,11 +70,23 @@ export class World {
   }
 
   plantInitial() {
+    // dense clustered forest, like the updated version of the game
     let placed = 0, guard = 0;
-    while (placed < WORLD.TREES && guard++ < 5000) {
-      const c = (this.rng() * this.cols) | 0, r = (this.rng() * this.rows) | 0;
+    const treeCells = [];
+    while (placed < WORLD.TREES && guard++ < 8000) {
+      let c, r;
+      if (treeCells.length && this.rng() < 0.55) {
+        // grow a cluster around an existing tree
+        const [bc, br] = treeCells[(this.rng() * treeCells.length) | 0];
+        c = bc + ((this.rng() * 5) | 0) - 2;
+        r = br + ((this.rng() * 5) | 0) - 2;
+      } else {
+        c = (this.rng() * this.cols) | 0;
+        r = (this.rng() * this.rows) | 0;
+      }
       if (this.canPlaceObstacle(c, r) && !this.nearCenter(c, r, 3)) {
         this.addTree(c, r, this.rng() < WORLD.FAKE_TREE_CHANCE);
+        treeCells.push([c, r]);
         placed++;
       }
     }
@@ -113,6 +141,10 @@ export class World {
       if (ob.type === 'sapling') {
         ob.t += dt;
         if (ob.t >= ob.growAt) {
+          // don't grow a solid tree under someone's feet — wait for the tile to clear
+          const occupied = (e) => !e.dead &&
+            Math.floor(e.x / TILE) === ob.c && Math.floor(e.y / TILE) === ob.r;
+          if (occupied(game.player) || game.enemies.some(occupied)) continue;
           const fakeChance = ob.fromPlayer ? WORLD.FAKE_SAPLING_CHANCE : WORLD.FAKE_TREE_CHANCE;
           this.removeObstacle(ob);
           this.addTree(ob.c, ob.r, this.rng() < fakeChance);
@@ -134,8 +166,13 @@ export class World {
         const ny = Math.max(by, Math.min(y, by + TILE));
         const dx = x - nx, dy = y - ny;
         const d2 = dx * dx + dy * dy;
-        if (d2 < radius * radius) {
-          const d = Math.sqrt(d2) || 0.001;
+        if (d2 === 0) {
+          // centre is inside the solid tile: push out along the shortest axis
+          const ox = x - (bx + TILE / 2), oy = y - (by + TILE / 2);
+          if (Math.abs(ox) >= Math.abs(oy)) x = ox >= 0 ? bx + TILE + radius : bx - radius;
+          else y = oy >= 0 ? by + TILE + radius : by - radius;
+        } else if (d2 < radius * radius) {
+          const d = Math.sqrt(d2);
           const push = radius - d;
           x += (dx / d) * push;
           y += (dy / d) * push;

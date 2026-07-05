@@ -50,6 +50,7 @@ export class Game {
   }
 
   buildHotbar() {
+    const held = this.hotbar?.[this.hotbarIndex]?.id;
     const bar = [];
     const weaponOrder = ['axe', 'pickaxe', 'pistol', 'shotgun', 'uzi', 'sniper', 'flamethrower', 'sword', 'rocket'];
     for (const w of weaponOrder) {
@@ -62,7 +63,10 @@ export class Game {
     bar.push({ kind: 'sapling', id: 'sapling', sprite: 'sapling', count: () => this.player.saplings });
     if (this.unlocked.has('tnt')) bar.push({ kind: 'tnt', id: 'tnt', sprite: 'tnt' });
     this.hotbar = bar;
-    if (this.hotbarIndex >= bar.length) this.hotbarIndex = 0;
+    // keep holding the same item when new unlocks shift the slots
+    const keep = bar.findIndex(it => it.id === held);
+    if (keep >= 0) this.hotbarIndex = keep;
+    else if (this.hotbarIndex >= bar.length) this.hotbarIndex = 0;
   }
 
   currentItem() { return this.hotbar[this.hotbarIndex]; }
@@ -134,13 +138,14 @@ export class Game {
 
   damageEnemy(e, dmg, opts = {}) {
     if (e.dead || e.invulnerable) return false;
-    if (e.bulletImmune && opts.bullet) {
+    // armored zombies shrug off everything except melee (per the video)
+    if (e.bulletImmune && (opts.bullet || opts.flame)) {
       this.fx.spark(e.x, e.y, '#aab', 3, 50);
       return false;
     }
     e.hp -= dmg * this.player.bonus.dmg;
     e.flash = 0.1;
-    if (opts.flame) e.burnT = 2;
+    if (opts.flame && !e.bulletImmune) e.burnT = 2;
     if (e.hp <= 0) { this.killEnemy(e); return true; }
     return true;
   }
@@ -191,7 +196,7 @@ export class Game {
       const ob = this.world.obstacleAt(c, r);
       if (!ob) continue;
       const ox = c * TILE + TILE / 2, oy = r * TILE + TILE / 2;
-      if (dist2(x, y, ox, oy) < radius * radius) this.damageObstacle(ob, 99);
+      if (dist2(x, y, ox, oy) < radius * radius) this.damageObstacle(ob, 99, true);
     }
     // the player is not spared
     if (selfDmg > 0 && !this.player.dead &&
@@ -200,22 +205,22 @@ export class Game {
     }
   }
 
-  damageObstacle(ob, dmg) {
+  damageObstacle(ob, dmg, byPlayer = false) {
     ob.hp -= dmg;
     if (ob.hp <= 0) {
       this.world.removeObstacle(ob);
       const x = ob.c * TILE + TILE / 2, y = ob.r * TILE + TILE / 2;
       if (ob.type === 'tree') {
-        if (ob.fake) {
-          // fake tree: falls on the player
+        if (ob.fake && byPlayer) {
+          // fake tree: falls on the player who chopped it
           this.fx.text(x, y - 24, 'FAKE TREE!', PALETTE.boss);
           this.fx.puff(x, y, PALETTE.fakeTree, 14);
           this.score += 5; this.gainXp(5);
-          if (dist2(x, y, this.player.x, this.player.y) < (TILE * 2.2) ** 2) {
+          if (dist2(x, y, this.player.x, this.player.y) < (PLAYER_CFG.reach + TILE) ** 2) {
             this.hurtPlayer(1, x, y, 90);
           }
         } else {
-          this.fx.puff(x, y, '#7ec850');
+          this.fx.puff(x, y, ob.fake ? PALETTE.fakeTree : '#7ec850');
         }
       } else if (ob.type === 'rock') {
         this.fx.puff(x, y, '#9aa0a8');
@@ -228,9 +233,12 @@ export class Game {
   gameOver() {
     this.player.dead = true;
     this.audio.play('die');
-    this.best = Math.max(this.best, this.score);
-    localStorage.setItem('ypws_best', String(this.best));
-    setTimeout(() => { this.state = STATE.GAMEOVER; }, 900);
+    setTimeout(() => {
+      // save best only once the score is final (posthumous burn kills still count)
+      this.best = Math.max(this.best, this.score);
+      localStorage.setItem('ypws_best', String(this.best));
+      this.state = STATE.GAMEOVER;
+    }, 900);
   }
 
   shake(mag) { this.shakeT = 0.25; this.shakeMag = Math.max(this.shakeMag, mag); }
@@ -259,7 +267,9 @@ export class Game {
       const c = Math.floor(aimX / TILE), r = Math.floor(aimY / TILE);
       const near = Math.abs(c * TILE + TILE / 2 - p.x) < TILE * 3.2 && Math.abs(r * TILE + TILE / 2 - p.y) < TILE * 3.2;
       const playerCell = c === Math.floor(p.x / TILE) && r === Math.floor(p.y / TILE);
-      if (near && !playerCell) {
+      const enemyOnCell = this.enemies.some(e => !e.dead &&
+        Math.floor(e.x / TILE) === c && Math.floor(e.y / TILE) === r);
+      if (near && !playerCell && !enemyOnCell) {
         if (item.kind === 'build') {
           const b = BUILD[item.id];
           if (p[b.res] >= b.cost && this.world.canPlaceObstacle(c, r)) {
@@ -313,7 +323,7 @@ export class Game {
       const ox = c * TILE + TILE / 2, oy = r * TILE + TILE / 2;
       if (dist2(p.x, p.y, ox, oy) < (PLAYER_CFG.reach + TILE) ** 2) {
         if (ob.type === 'tree' && id === 'axe') {
-          this.damageObstacle(ob, 1);
+          this.damageObstacle(ob, 1, true);
           this.audio.play('chop');
           if (ob.hp <= 0 && !ob.fake) {
             this.player.wood += 2 + ((Math.random() * 3) | 0);
@@ -322,7 +332,7 @@ export class Game {
           }
           hitSomething = true;
         } else if (ob.type === 'rock' && id === 'pickaxe') {
-          this.damageObstacle(ob, 1);
+          this.damageObstacle(ob, 1, true);
           this.audio.play('mine');
           if (ob.hp <= 0) {
             this.player.stone += 2 + ((Math.random() * 2) | 0);
@@ -330,7 +340,7 @@ export class Game {
           }
           hitSomething = true;
         } else if (ob.type === 'wall' || ob.type === 'sapling') {
-          this.damageObstacle(ob, 1);   // reclaim mistakes (no refund)
+          this.damageObstacle(ob, 1, true);   // reclaim mistakes (no refund)
           this.audio.play('chop');
           hitSomething = true;
         } else if (ob.type === 'tree' || ob.type === 'rock') {
@@ -355,6 +365,10 @@ export class Game {
         pierce: w.pierce ?? 0, headshot: w.headshot ?? false,
         aoe: w.aoe ?? 0, selfDmg: w.selfDmg ?? 0,
       }));
+    }
+    // muzzle flash
+    if (!w.flame) {
+      this.fx.spark(p.x + Math.cos(p.aim) * 22, p.y + Math.sin(p.aim) * 22, '#f5d76e', 3, 60);
     }
     this.audio.play(id === 'shotgun' ? 'shotgun' : id === 'uzi' ? 'uzi' : id === 'sniper' ? 'sniper' : w.flame ? 'flame' : 'shoot');
     // the hybrid boss reacts to player gunfire
@@ -391,19 +405,24 @@ export class Game {
       return;   // world pauses during the choice
     }
 
-    // hotbar select
+    // hotbar select (1-9, 0 = slot 10, wheel cycles)
     for (let i = 0; i < Math.min(9, this.hotbar.length); i++) {
       if (input.hit('Digit' + (i + 1))) this.hotbarIndex = i;
     }
+    if (this.hotbar.length >= 10 && input.hit('Digit0')) this.hotbarIndex = 9;
     if (input.wheel) {
-      this.hotbarIndex = (this.hotbarIndex + input.wheel + this.hotbar.length) % this.hotbar.length;
+      const n = this.hotbar.length;
+      this.hotbarIndex = (((this.hotbarIndex + input.wheel) % n) + n) % n;
     }
 
     this.player.update(dt, this);
     this.useItem(dt);
 
     this.waves.update(dt);
-    for (const e of this.enemies) if (!e.dead) e.update(dt, this);
+    for (const e of this.enemies) {
+      e.tickBurn(dt, this);              // burn applies to every enemy, bosses included
+      if (!e.dead) e.update(dt, this);
+    }
     this.enemies = this.enemies.filter(e => !e.dead);
 
     for (const pr of this.projectiles) pr.update(dt, this);

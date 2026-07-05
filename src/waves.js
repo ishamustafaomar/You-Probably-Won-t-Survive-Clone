@@ -22,13 +22,16 @@ export class WaveDirector {
       this.timer -= dt;
       if (this.timer <= 0) this.startWave();
     } else {
-      // trickle-spawn the queued enemies
+      // spawn the queued enemies in bursts so hordes build up fast
       this.spawnTick -= dt;
       if (this.toSpawn.length && this.spawnTick <= 0) {
-        this.spawnTick = Math.max(0.25, 1.4 - this.wave * 0.05);
-        const type = this.toSpawn.pop();
-        const [x, y] = this.pickSpawn();
-        g.spawnEnemy(type, x, y);
+        this.spawnTick = Math.max(0.4, 1.6 - this.wave * 0.06);
+        const burst = Math.min(this.toSpawn.length, 2 + ((this.wave / 4) | 0));
+        for (let i = 0; i < burst; i++) {
+          const type = this.toSpawn.pop();
+          const [x, y] = this.pickSpawn();
+          g.spawnEnemy(type, x, y);
+        }
       }
       if (!this.toSpawn.length && g.enemies.filter(e => !e.dead).length === 0) {
         this.endWave();
@@ -76,7 +79,7 @@ export class WaveDirector {
     const w = g.world;
     for (let tries = 0; tries < 200; tries++) {
       let c, r;
-      if (g.impossible && !forBoss) {
+      if (g.impossible) {   // impossible mode: everything (bosses too) spawns anywhere
         c = (Math.random() * w.cols) | 0;
         r = (Math.random() * w.rows) | 0;
         if (w.cell(c, r) !== CELL.GROUND || w.isSolid(c, r)) continue;

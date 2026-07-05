@@ -16,7 +16,11 @@ export class Input {
       if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
     });
     window.addEventListener('keyup', e => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.mouse.left = false;
+      this.mouse.right = false;
+    });
 
     canvas.addEventListener('mousemove', e => {
       const r = canvas.getBoundingClientRect();

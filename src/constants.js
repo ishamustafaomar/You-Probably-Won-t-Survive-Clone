@@ -77,7 +77,7 @@ PALETTE.groundDeco = '#ddd5a0';
 // ---- gameplay config --------------------------------------------------------
 export const WORLD = {
   COLS: 64, ROWS: 44,          // island map in tiles
-  TREES: 95, ROCKS: 26,
+  TREES: 230, ROCKS: 40,       // dense forest, like the updated version of the game
   FAKE_TREE_CHANCE: 0.10,      // world-grown trees
   FAKE_SAPLING_CHANCE: 0.25,   // trees grown from planted saplings
   SAPLING_GROW_TIME: 35,       // seconds
@@ -94,7 +94,7 @@ export const PLAYER_CFG = {
 export const ENEMIES = {
   zombie:   { hp: 3,  speed: 42,  dmg: 0.5, score: 10, tint: 'zombie',   scale: 1.0,  blockDps: 1.0 },
   skeleton: { hp: 4,  speed: 55,  dmg: 1.0, score: 15, tint: 'skeleton', scale: 1.0,  blockDps: 1.0 },
-  mini:     { hp: 1,  speed: 95,  dmg: 0.5, score: 5,  tint: 'zombie',   scale: 0.7,  blockDps: 0.7 },
+  mini:     { hp: 1,  speed: 95,  dmg: 0.25, score: 5,  tint: 'zombie',   scale: 0.7,  blockDps: 0.7 },
   big:      { hp: 10, speed: 26,  dmg: 1.5, score: 30, tint: 'zombie',   scale: 1.6,  blockDps: 2.0 },
   ghost:    { hp: 3,  speed: 48,  dmg: 0.5, score: 20, tint: 'ghost',    scale: 1.0,  blockDps: 0 },
   lava:     { hp: 5,  speed: 36,  dmg: 1.0, score: 25, tint: 'lava',     scale: 1.1,  blockDps: 0.5,
@@ -141,8 +141,8 @@ export const BUILD = {
 export const WAVES = {
   prepTime: 15,          // seconds between waves
   firstPrep: 10,
-  budgetBase: 5,         // enemy budget = base + wave * perWave
-  budgetPerWave: 3,
+  budgetBase: 8,         // enemy budget = base + wave * perWave
+  budgetPerWave: 4.5,    // updated-version pacing: hordes, not trickles
   bossEvery: 10,         // boss waves: 10, 20, 30... alternate big/hybrid
   // wave at which each enemy starts appearing, and its budget cost
   roster: {
